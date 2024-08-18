@@ -18,22 +18,29 @@
     4. [Passing State to Child Components](#passing-state-to-child-components)
     5. [Using State as Change Handler](#using-state-as-change-handler)
     6. [Minimizing Re-renders](#minimizing-re-renders)
-6. [React Standards Compliance](#react-standards-compliance)
+6. [React Standards Compliance and Justification for Mutations](#react-standards-compliance-and-justification-for-mutations)
+    1. [Why Mutations?](#why-mutations)
+    2. [Ensuring React Principles](#ensuring-react-principles)
 7. [More Usage Examples](#more-usage-examples)
 8. [Contributing](#contributing)
 9. [Conclusion](#conclusion)
 
 ## Introduction
 
-`morph-state` is a fine-grained mutable state management library for React built using TypeScript. It allows you to manage state at any nested property level efficiently, ensuring minimal re-renders. This library provides a hook called `useMutableState` to facilitate state management with easy mutation.
+`morph-state` is a comprehensive mutable state management library for React built using TypeScript. It offers three distinct ways to manage state efficiently: component-wise, global state outside of components, and context-based global state. By leveraging proxy objects, it allows for fine-grained mutations at any nested property level while ensuring optimal performance.
 
 ## Key Features
 
-1. **Component-wise State**: Similar to `useState` in React, but allows deep property mutations.
-2. **Mutable Nested Properties**: Directly mutate nested properties without triggering unnecessary re-renders.
-3. **State Callbacks**: Execute a callback function on state changes, allowing you to control the mutation.
-4. **Utility Methods**: Includes methods to reset the state, replace the state, and convert the state to a JSON object.
-5. **React Standards Compliance**: Designed to work seamlessly with React without violating its principles.
+1. **Component-wise State Management**:
+   - Similar to React’s `useState` but allows for deeper property mutations.
+   - Optimized to prevent unnecessary re-renders.
+   - Features callback mechanisms for controlled state changes.
+2. **Global State Outside Components**:
+   - Initializing and modifying state outside of React components.
+   - Provides hooks to access and mutate state within components efficiently.
+3. **Context-based Global State**:
+   - Global state management using React Context API.
+   - Provides `<MorphStateProvider>` and `useMorphState` hooks for accessing and modifying state deeply nested within the component tree.
 
 ## Installation
 
@@ -362,10 +369,29 @@ function App() {
 
 ## React Standards Compliance
 
-This library is built to align with React’s principles:
-- **Declarative Approach**: Mutations are declarative and controlled.
-- **Efficient Updates**: Only the necessary components re-render on state changes, ensuring performance.
-- **Hook Usage**: Leverages React hooks to manage state within functional components.
+### Why Mutations?
+
+In most programming paradigms, immutability is considered a best practice to ensure predictable and maintainable code. However, JavaScript's lack of intrinsic immutability at the language level often necessitates extensive copy operations, especially within deeply nested structures. This can lead to boilerplate code, reduced readability.
+
+`morph-state` uses mutations to provide a convenient, intuitive, and more natural API for state management. This approach avoids the overhead of deep cloning objects and reduces the complexity of managing deeply nested properties while still adhering to predictable state updates.
+
+### Ensuring React Principles
+
+Despite using mutations internally, `morph-state` is designed to comply with React principles. Here's how it achieves this:
+
+1. **Controlled Mutations**: State mutations trigger controlled updates via proxies, ensuring that React only re-renders components when necessary. This fine-grained control helps optimize performance and adheres to React’s rendering lifecycle.
+  
+2. **Efficient Updates**: The proxy mechanism efficiently communicates state changes while preventing unnecessary deep copies. This approach leverages JavaScript's strengths and allows seamless integration with React's reactivity model.
+
+3. **Component Isolation**: Each component subscribes only to the specific state properties it needs. This isolation minimizes the impact of state changes, reducing the scope of re-renders and promoting efficient rendering.
+
+4. **Declarative State Management**: Even though mutations are used behind the scenes, the state management interface remains declarative. This ensures that the component logic remains clear, predictable, and easy to reason about.
+
+5. **Memoization**: By memoizing handlers and callbacks, `morph-state` ensures that changes propagate efficiently through props, avoiding unnecessary re-renders and maintaining React's performance integrity.
+
+In conclusion, while `morph-state` uses mutations to manage state, it ensures that these mutations are controlled, efficient, and aligned with React's principles. This provides the best of both worlds: the convenience and performance of mutable operations with the predictable and declarative nature of React.
+
+This approach is particularly beneficial in applications with highly nested states, reducing boilerplate code and enhancing code readability. By ensuring adjustable mutations with granular callbacks, it provides additional flexibility and control.For major changes, please open an issue first to discuss what you would like to change
 
 ## More Usage Examples
 
@@ -396,9 +422,3 @@ const state = useMutableState({ count: 0 }, callback);
 Thank you for considering contributing to the Mutable State Management Library! Please fork the repository and submit a pull request with a detailed description of your changes. By contributing, you agree that your contributions will be licensed under the same license as the project, MIT License with Redistribution Restriction.
 
 For major changes, please open an issue first to discuss what you would like to change.
-
-## Conclusion
-
-This mutable state management library is a powerful and comprehensive tool for managing both component-wise and global mutable state within React applications for efficiently managing complex state. It provides a straightforward API to handle deep mutations and ensures performance by minimizing unnecessary re-renders. It adheres to React standards and promotes best practices for maintaining a reactive and efficient application.
-
-This approach is particularly beneficial in applications with highly nested states, reducing boilerplate code and enhancing code readability. By ensuring adjustable mutations with granular callbacks, it provides additional flexibility and control.
