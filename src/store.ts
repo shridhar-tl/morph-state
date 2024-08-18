@@ -12,32 +12,38 @@ export function createStore<T extends Record<string, any>>(
 
 export function createHook<T extends Record<string, any>, R>(
     store: { state: T & MutableState<T> },
-    selector?: (state: T) => R
+    selector?: (state: T & MutableState<T>) => R
 ) {
-    return (selectProp?: (subState: R) => any) => {
-        const [state, setState] = React.useState(() => {
-            const selectedSlice: R = selector ? selector(store.state) as R : store.state as R;
-            return selectProp ? selectProp(selectedSlice) : selectedSlice;
-        });
+    return (selectProp?: (state: T & MutableState<T>) => R) => {
+        const rootState = React.useMemo<any>(() =>
+            selector ? selector(store.state) as any : store.state as any, []);
+
+        const state = React.useMemo(() => selectProp ? selectProp(rootState) : rootState, []);
+
+        const $ref = React.useRef({ rootState, state });
+
+        const [, triggerUpdate] = React.useState(state);
 
         React.useEffect(() => {
-            const selectedSlice: R = selector ? selector(store.state) as R : store.state as R;
-            const selectedPath = selectProp ? selectProp(selectedSlice) as string : null;
-            let unsubscribe;
+            return store.state.subscribe(() => { // ToDo: Need to optimize it to subscribe only for specific property
+                const newRootState: any = selector ? selector(store.state) : store.state;
+                $ref.current.rootState = newRootState;
 
-            if (selectedPath) {
-                unsubscribe = store.state[selectedPath].subscribe(setState);
-            } else if (selectedSlice && typeof selectedSlice === 'object') {
-                const stateEntries = Object.entries(selectedSlice);
-                const unsubscribes = stateEntries.map(([innerKey]) => store.state[innerKey].subscribe(setState));
-                unsubscribe = () => unsubscribes.forEach(u => u());
-            } else {
-                unsubscribe = store.state.subscribe(setState);
-            }
-
-            return unsubscribe;
+                if (selectProp) {
+                    const newState = selectProp(newRootState);
+                    $ref.current.state = newState;
+                    if (typeof newState === "object" || newState !== $ref.current.state) {
+                        triggerUpdate({});
+                    }
+                } else {
+                    $ref.current.state = rootState;
+                    if (typeof rootState === "object" || rootState !== $ref.current.rootState) {
+                        triggerUpdate({});
+                    }
+                }
+            });
         }, [store.state, selectProp]);
 
-        return state;
+        return $ref.current.state;
     };
 }

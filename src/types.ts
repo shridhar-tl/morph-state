@@ -1,5 +1,3 @@
-import { ReactNode } from "react";
-
 export type ChangeCallback<T> = (
     path: Array<string | number>,
     newValue: any,
@@ -32,5 +30,3 @@ export type ProviderProps<T> = {
     onChange?: ChangeCallback<T>;
     children: any;
 };
-
-//type ChangeCallback<T> = (path: Array<string | number>, newValue: any, state: T) => void;

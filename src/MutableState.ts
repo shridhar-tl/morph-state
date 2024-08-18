@@ -1,35 +1,32 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/ban-types */
 import { unstable_batchedUpdates } from './batchedUpdates';
-import { ChangeCallback, MutableState, Subscribers } from "./types";
+import { ChangeCallback, MutableState } from "./types";
+
+const rootSubscriberKey = '';
+
+type StateWrapper<T> = { current: T };
 
 export function createMutableState<T extends Record<string, any>>(
     initialState: T,
     changeHandler?: ChangeCallback<T>
 ): T & MutableState<T> {
-    const state: T = { ...initialState }; // Ensure we're creating a new object to avoid unwanted mutations
-    const subscribers: Subscribers<T> = new Set();
+    const constructInitialState = () => initialState ? JSON.parse(JSON.stringify(initialState)) : {};
+    const state: StateWrapper<T> = { current: constructInitialState() };
+
     const pathToCallback: Map<string, Set<Function>> = new Map();
 
-    const notifySubscribers = (propPath?: (string | number)[]) => {
+    const notifySubscribers = (propPath: (string | number)[]) => {
         unstable_batchedUpdates(() => {
-            if (propPath) {
-                const pathStr = propPath.join('.');
-                const callbacks = pathToCallback.get(pathStr) || new Set();
-                callbacks.forEach(callback => callback());
+            let path = "";
+            for (const key of propPath) {
+                path = path ? `${path}.${key}` : String(key);
+                const callbacks = pathToCallback.get(path);
+                callbacks?.forEach(callback => callback());
             }
-            (Array.from(pathToCallback.keys())).forEach(path => {
-                if (propPath) {
-                    const propPathStr = propPath.join('.');
-                    if (path.startsWith(propPathStr)) {
-                        const callbacks = pathToCallback.get(path) || new Set();
-                        callbacks.forEach(callback => callback());
-                    }
-                } else {
-                    const callbacks = pathToCallback.get(path) || new Set();
-                    callbacks.forEach(callback => callback());
-                }
-            });
+
+            // Notify root subscribers if any part of the state changes
+            pathToCallback.get(rootSubscriberKey)?.forEach(callback => callback());
         });
     };
 
@@ -53,12 +50,10 @@ export function createMutableState<T extends Record<string, any>>(
             return { modifiedValue, cancelUpdate };
         };
 
-        const pathStr: string = propPath.join('.');
-
         return new Proxy({
             remove: () => {
                 const lastKey = propPath.pop();
-                const parent = propPath.reduce((acc, key) => acc[key], state as any);
+                const parent = propPath.reduce((acc, key) => acc[key], state.current as any);
                 delete parent[lastKey as keyof typeof parent];
                 notifySubscribers(propPath);
             },
@@ -68,7 +63,7 @@ export function createMutableState<T extends Record<string, any>>(
 
                 if (!cancelUpdate) {
                     const lastKey = propPath.pop();
-                    const parent = propPath.reduce((acc, key) => acc[key], state as any);
+                    const parent = propPath.reduce((acc, key) => acc[key], state.current as any);
                     parent[lastKey as keyof typeof parent] = modifiedValue;
                     notifySubscribers(propPath);
                 }
@@ -80,32 +75,40 @@ export function createMutableState<T extends Record<string, any>>(
 
                 if (!cancelUpdate) {
                     const lastKey = propPath.pop();
-                    const parent = propPath.reduce((acc, key) => acc[key], state as any);
+                    const parent = propPath.reduce((acc, key) => acc[key], state.current as any);
                     parent[lastKey as keyof typeof parent] = modifiedValue;
                     notifySubscribers(propPath);
                 }
             },
             subscribe: (callback: Function) => {
+                const pathStr: string = propPath.join('.');
                 if (!pathToCallback.has(pathStr)) {
                     pathToCallback.set(pathStr, new Set());
                 }
-                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                const callbacks = pathToCallback.get(pathStr)!;
+                const callbacks = pathToCallback.get(pathStr) as Set<Function>;
                 callbacks.add(callback);
                 return () => callbacks.delete(callback);
             }
         }, {
             get(target, prop: string, receiver) {
                 if (typeof prop === 'symbol') return Reflect.get(target, prop, receiver);
-                if (!(state as any)[prop]) {
-                    // If this is an access for a non-existing property, return a proxy for that
+
+                /*if (prop === 'subscribe') {
+                    return function (callback: Function) {
+                        if (!pathToCallback.has(rootSubscriberKey)) {
+                            pathToCallback.set(rootSubscriberKey, new Set());
+                        }
+                        const callbacks = pathToCallback.get(rootSubscriberKey) as Set<Function>;
+                        callbacks.add(callback);
+                        return () => callbacks.delete(callback);
+                    };
+                }*/
+
+                if (!(state.current as any)[prop]) {
                     return createPathProxy([...propPath, prop]);
                 }
 
-                // If accessing an existing property, tap into the state's nested property
-                const value = propPath.reduce((acc, key) => acc[key], state as any)[prop];
-
-                // If the value is an object, return a proxy so we can again recusively do the same thing
+                const value = propPath.reduce((acc, key) => acc[key], state.current as any)[prop];
                 if (typeof value === 'object' && value !== null) {
                     return new Proxy(value, {
                         get(innerTarget, innerProp: string, innerReceiver) {
@@ -116,7 +119,7 @@ export function createMutableState<T extends Record<string, any>>(
                             const { modifiedValue, cancelUpdate } = buildChangeHandler(newValue);
                             if (!cancelUpdate) {
                                 const lastKey = nestedPath.pop();
-                                const parent = nestedPath.reduce((acc, key) => acc[key], state as any);
+                                const parent = nestedPath.reduce((acc, key) => acc[key], state.current as any);
                                 parent[lastKey as keyof typeof parent] = modifiedValue;
                                 notifySubscribers(nestedPath);
                             }
@@ -128,7 +131,7 @@ export function createMutableState<T extends Record<string, any>>(
                 }
             },
             set(target, prop: string, value) {
-                (state as any)[prop] = value;
+                (state.current as any)[prop] = value;
                 notifySubscribers([...propPath, prop]);
                 return true;
             },
@@ -138,44 +141,51 @@ export function createMutableState<T extends Record<string, any>>(
     const handler: any = {
         get(target: T, prop: string | number, receiver: any) {
             if (prop === 'toJSON') {
-                return () => JSON.parse(JSON.stringify(state));
+                return () => JSON.parse(JSON.stringify(state.current));
             }
 
             if (prop === 'replace') {
                 return (newState: T) => {
-                    Object.keys(newState).forEach(key => {
-                        (state as any)[key] = (newState as any)[key];
-                    });
-                    notifySubscribers();
+                    state.current = newState;
+                    notifySubscribers([]);
                 };
             }
 
             if (prop === 'reset') {
                 return () => {
-                    Object.keys(initialState).forEach(key => {
-                        (state as any)[key] = (initialState as any)[key];
-                    });
-                    notifySubscribers();
+                    state.current = constructInitialState();
+                    notifySubscribers([]);
                 };
             }
 
-            if (prop in state) {
-                const value = (state as any)[prop];
-                if (typeof value === 'object' && value !== null) {
-                    return new Proxy(value, handler);
+            if (prop === 'subscribe') {
+                return (callback: Function) => {
+                    if (!pathToCallback.has(rootSubscriberKey)) {
+                        pathToCallback.set(rootSubscriberKey, new Set());
+                    }
+
+                    const callbacks = pathToCallback.get(rootSubscriberKey) as Set<Function>;
+                    callbacks.add(callback);
+                    return () => callbacks.delete(callback);
                 }
-                return value;
+            }
+
+            if (prop in state.current) {
+                const value = (state.current as any)[prop];
+                if (value && typeof value !== 'object') {
+                    return value;
+                }
             }
 
             return createPathProxy([prop]);
         },
 
         set(target: T, prop: string | number, value: any, receiver: any) {
-            (state as any)[prop] = value;
+            (state.current as any)[prop] = value;
             notifySubscribers([prop as string]);
             return true;
         },
     };
 
-    return new Proxy(state, handler) as T & MutableState<T>;
+    return new Proxy(state.current, handler) as T & MutableState<T>;
 }

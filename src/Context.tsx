@@ -1,6 +1,6 @@
-import React, { createContext, useContext } from 'react';
-import { ProviderProps } from "./types";
-import { createStore } from './store';
+import React, { createContext, useContext, useRef } from 'react';
+import { MutableState, ProviderProps } from "./types";
+import { createMutableState } from './MutableState';
 
 const MorphStateContext = createContext<any>(null);
 
@@ -9,10 +9,14 @@ export function MorphStateProvider<T extends Record<string, any>>({
     onChange,
     children
 }: ProviderProps<T>): JSX.Element {
-    const store = createStore(initialState, onChange);
+    const stateRef = useRef<T & MutableState<T>>();
+
+    if (!stateRef.current) {
+        stateRef.current = createMutableState(initialState || ({} as T), onChange);
+    }
 
     return (
-        <MorphStateContext.Provider value={store.state}>
+        <MorphStateContext.Provider value={stateRef.current}>
             {children}
         </MorphStateContext.Provider>
     );
@@ -22,6 +26,7 @@ export function useMorphState<T extends Record<string, any>, R = T>(
     selector?: (state: T) => R
 ): R | T {
     const contextState = useContext<T>(MorphStateContext);
+
     if (!contextState) {
         throw new Error('useMorphState must be used within a MorphStateProvider');
     }
@@ -31,31 +36,16 @@ export function useMorphState<T extends Record<string, any>, R = T>(
     });
 
     React.useEffect(() => {
-        let unsubscribe: any;
         if (selector) {
-            const relevantState: any = selector(contextState);
-            const stateKeys = Object.keys(relevantState);
-            unsubscribe = stateKeys.map((key) =>
-                (contextState as any)[key].subscribe(() => {
-                    const newState = selector(contextState);
-                    setSelectedState(newState);
-                })
-            ).reduce((acc, val) => {
-                const unsubs = Array.isArray(val) ? val : [val];
-                return [...acc, ...unsubs];
-            }, []);
+            //const relevantState: any = selector(contextState);
+            return contextState.subscribe(() => { // ToDo: Need to optimize it to subscribe only for specific property
+                const newState = selector(contextState);
+                setSelectedState(newState);
+            });
         } else {
-            unsubscribe = contextState.subscribe(setSelectedState);
+            return contextState.subscribe(() => setSelectedState({} as any));
         }
-
-        return () => {
-            if (Array.isArray(unsubscribe)) {
-                unsubscribe.forEach(unsubscribeFn => unsubscribeFn());
-            } else if (unsubscribe) {
-                unsubscribe();
-            }
-        };
     }, [contextState, selector]);
 
-    return selectedState;
+    return selector ? selectedState : contextState;
 }

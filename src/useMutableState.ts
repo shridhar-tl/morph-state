@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { MutableStateHook, MutableState, ChangeCallback, Subscribers } from './types';
+import { MutableStateHook, MutableState, ChangeCallback } from './types';
 import { createMutableState } from './MutableState';
 
 export function useMutableState<T extends Record<string, any>>(
@@ -7,7 +7,7 @@ export function useMutableState<T extends Record<string, any>>(
     changeHandler?: ChangeCallback<T>
 ): MutableStateHook<T> {
     const stateRef = useRef<T & MutableState<T>>();
-    const [, setState] = useState<T | any>({});
+    const [, setState] = useState<Partial<T>>({});
 
     if (!stateRef.current) {
         stateRef.current = createMutableState(
@@ -16,14 +16,7 @@ export function useMutableState<T extends Record<string, any>>(
         );
     }
 
-    useEffect(() => {
-        const subscribers = stateRef.current?.__subscribers as Subscribers<T>;
-        subscribers.add(setState);
-
-        return () => {
-            subscribers.delete(setState);
-        };
-    }, []);
+    useEffect(() => (stateRef.current as any).subscribe(() => setState({})), []);
 
     return stateRef.current;
 }
