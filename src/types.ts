@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-types */
 export type ChangeCallback<T> = (
     path: Array<string | number>,
     newValue: any,
@@ -12,6 +13,13 @@ export interface MutableState<T extends Record<string, any>> {
     replace: (newState: T) => void;
     reset: () => void;
     [key: string]: any;
+}
+
+export interface StateProperty {
+    remove: () => void;
+    changeHandler: (callback: (value: any) => void) => (event: any) => void;
+    useCallback: () => (value: any) => void;
+    subscribe: (callback: Function) => Function;
 }
 
 export interface ProxyHandlerContext<T> {

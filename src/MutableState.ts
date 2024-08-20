@@ -1,17 +1,18 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/ban-types */
 import { unstable_batchedUpdates } from './batchedUpdates';
-import { ChangeCallback, MutableState } from "./types";
+import { deepClone } from './lib/utils';
+import { ChangeCallback, MutableState, StateProperty } from "./types";
 
 const rootSubscriberKey = '';
 
 type StateWrapper<T> = { current: T };
 
 export function createMutableState<T extends Record<string, any>>(
-    initialState: T,
+    initialState?: T,
     changeHandler?: ChangeCallback<T>
 ): T & MutableState<T> {
-    const constructInitialState = () => initialState ? JSON.parse(JSON.stringify(initialState)) : {};
+    const constructInitialState = () => initialState ? deepClone(initialState) : {} as T;
     const state: StateWrapper<T> = { current: constructInitialState() };
 
     const pathToCallback: Map<string, Set<Function>> = new Map();
@@ -30,7 +31,16 @@ export function createMutableState<T extends Record<string, any>>(
         });
     };
 
-    const createPathProxy = (propPath: Array<string | number>): any => {
+    const memoizedProxies = new Map<string, StateProperty>();
+    const createPathProxy = (propPath: Array<string>): StateProperty => {
+        const isValidPath = propPath.some(v => typeof v !== 'string');
+        const pathStr: string = isValidPath ? propPath.join('.') : '';
+
+        let memoizedInstance = memoizedProxies.get(pathStr) as StateProperty;
+        if (memoizedInstance) {
+            return memoizedInstance;
+        }
+
         const buildChangeHandler = (newValue: any) => {
             let modifiedValue = newValue;
             let cancelUpdate = false;
@@ -50,7 +60,7 @@ export function createMutableState<T extends Record<string, any>>(
             return { modifiedValue, cancelUpdate };
         };
 
-        return new Proxy({
+        memoizedInstance = new Proxy({
             remove: () => {
                 const lastKey = propPath.pop();
                 const parent = propPath.reduce((acc, key) => acc[key], state.current as any);
@@ -81,7 +91,6 @@ export function createMutableState<T extends Record<string, any>>(
                 }
             },
             subscribe: (callback: Function) => {
-                const pathStr: string = propPath.join('.');
                 if (!pathToCallback.has(pathStr)) {
                     pathToCallback.set(pathStr, new Set());
                 }
@@ -90,7 +99,7 @@ export function createMutableState<T extends Record<string, any>>(
                 return () => callbacks.delete(callback);
             }
         }, {
-            get(target, prop: string, receiver) {
+            get(target: any, prop: string, receiver: any) {
                 if (typeof prop === 'symbol') return Reflect.get(target, prop, receiver);
 
                 /*if (prop === 'subscribe') {
@@ -130,18 +139,39 @@ export function createMutableState<T extends Record<string, any>>(
                     return value;
                 }
             },
-            set(target, prop: string, value) {
-                (state.current as any)[prop] = value;
+            set(target: any, prop: string, value: any) {
+                // Clear all memoized proxies
+                const fullPath = pathStr ? `${pathStr}.${prop}` : prop;
+                const fullPathDot = pathStr ? `${pathStr}.${prop}.` : `${prop}.`; // Should clear memoized proxies for nested props also
+                Object.keys(memoizedProxies).forEach(key => {
+                    if (key === fullPath || key.startsWith(fullPathDot)) {
+                        memoizedProxies.delete(key);
+                    }
+                });
+
+                const parent = propPath.reduce((obj, cur) => {
+                    const p = obj[cur] ?? {}; // If no object exists for current path, then create that object
+                    obj[cur] = p;
+                    return p;
+                }, state.current as any);
+
+                parent[prop] = value;
+
                 notifySubscribers([...propPath, prop]);
+
                 return true;
             },
         });
+
+        memoizedProxies.set(pathStr, memoizedInstance);
+
+        return memoizedInstance;
     };
 
     const handler: any = {
-        get(target: T, prop: string | number, receiver: any) {
+        get(target: T, prop: string, receiver: any) {
             if (prop === 'toJSON') {
-                return () => JSON.parse(JSON.stringify(state.current));
+                return () => deepClone(state.current);
             }
 
             if (prop === 'replace') {
