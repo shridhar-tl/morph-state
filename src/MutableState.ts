@@ -10,7 +10,7 @@ type StateWrapper<T> = { current: T };
 
 export function createMutableState<T extends Record<string, any>>(
     initialState?: T,
-    changeHandler?: ChangeCallback<T>
+    changeHandler?: ChangeCallback<T, any>
 ): T & MutableState<T> {
     const constructInitialState = () => initialState ? deepClone(initialState) : {} as T;
     const state: StateWrapper<T> = { current: constructInitialState() };
@@ -32,8 +32,19 @@ export function createMutableState<T extends Record<string, any>>(
     };
 
     const memoizedProxies = new Map<string, StateProperty>();
+
+    function clearMemoizedProxies(fullPath: string) {
+        // Clear all memoized proxies
+        const fullPathDot = `${fullPath}.`; // Should clear memoized proxies for nested props also
+        memoizedProxies.forEach((_, key) => {
+            if (key === fullPath || key.startsWith(fullPathDot)) {
+                memoizedProxies.delete(key);
+            }
+        });
+    }
+
     const createPathProxy = (propPath: Array<string>): StateProperty => {
-        const isValidPath = propPath.some(v => typeof v !== 'string');
+        const isValidPath = propPath.every(v => typeof v === 'string');
         const pathStr: string = isValidPath ? propPath.join('.') : '';
 
         let memoizedInstance = memoizedProxies.get(pathStr) as StateProperty;
@@ -41,7 +52,7 @@ export function createMutableState<T extends Record<string, any>>(
             return memoizedInstance;
         }
 
-        const buildChangeHandler = (newValue: any) => {
+        const buildChangeHandler = (newValue: any, callback: ChangeCallback<T, any> | undefined = changeHandler) => {
             let modifiedValue = newValue;
             let cancelUpdate = false;
 
@@ -53,117 +64,87 @@ export function createMutableState<T extends Record<string, any>>(
                 cancelUpdate = true;
             };
 
-            if (changeHandler) {
-                changeHandler(propPath, newValue, modifyNewValue, cancelChange);
+            if (callback) {
+                callback(newValue, { field: pathStr, cancel: cancelChange, update: modifyNewValue });
             }
 
             return { modifiedValue, cancelUpdate };
         };
 
         memoizedInstance = new Proxy({
-            remove: () => {
+            $value: () => {
+                return getPropValue(state.current, propPath);
+            },
+            $remove: () => {
                 const lastKey = propPath.pop();
-                const parent = propPath.reduce((acc, key) => acc[key], state.current as any);
+                const parent = getPropValue(state.current, propPath);
+                if (!parent) { return; }
                 delete parent[lastKey as keyof typeof parent];
                 notifySubscribers(propPath);
             },
-            changeHandler: (callback: (value: any) => void) => (event: any) => {
+            $eventHandler: (callback?: (value: any) => void) => (event: any) => {
                 const value = event.target.value;
-                const { modifiedValue, cancelUpdate } = buildChangeHandler(value);
+                const { modifiedValue, cancelUpdate } = buildChangeHandler(value, callback ?? changeHandler);
 
                 if (!cancelUpdate) {
                     const lastKey = propPath.pop();
-                    const parent = propPath.reduce((acc, key) => acc[key], state.current as any);
-                    parent[lastKey as keyof typeof parent] = modifiedValue;
-                    notifySubscribers(propPath);
-                }
-
-                callback(modifiedValue);
-            },
-            useCallback: () => (value: any) => {
-                const { modifiedValue, cancelUpdate } = buildChangeHandler(value);
-
-                if (!cancelUpdate) {
-                    const lastKey = propPath.pop();
-                    const parent = propPath.reduce((acc, key) => acc[key], state.current as any);
+                    const parent = getPropValue(state.current, propPath);
                     parent[lastKey as keyof typeof parent] = modifiedValue;
                     notifySubscribers(propPath);
                 }
             },
-            subscribe: (callback: Function) => {
+            $changeHandler: (value: any) => {
+                const { modifiedValue, cancelUpdate } = buildChangeHandler(value);
+
+                if (!cancelUpdate) {
+                    const lastKey = propPath.pop();
+                    const parent = getPropValue(state.current, propPath);
+                    parent[lastKey as keyof typeof parent] = modifiedValue;
+                    notifySubscribers(propPath);
+                }
+            },
+            $subscribe: (callback: Function) => {
                 if (!pathToCallback.has(pathStr)) {
                     pathToCallback.set(pathStr, new Set());
                 }
+
                 const callbacks = pathToCallback.get(pathStr) as Set<Function>;
                 callbacks.add(callback);
+
                 return () => callbacks.delete(callback);
             }
         }, {
             get(target: any, prop: string, receiver: any) {
                 if (typeof prop === 'symbol') return Reflect.get(target, prop, receiver);
 
-                /*if (prop === 'subscribe') {
-                    return function (callback: Function) {
-                        if (!pathToCallback.has(rootSubscriberKey)) {
-                            pathToCallback.set(rootSubscriberKey, new Set());
-                        }
-                        const callbacks = pathToCallback.get(rootSubscriberKey) as Set<Function>;
-                        callbacks.add(callback);
-                        return () => callbacks.delete(callback);
-                    };
-                }*/
-
-                if (!(state.current as any)[prop]) {
-                    return createPathProxy([...propPath, prop]);
+                if (target[prop]) { // Target will only contain api functions like $value, $subscribe, $changeHandler, etc
+                    return target[prop];
                 }
 
-                const value = propPath.reduce((acc, key) => acc[key], state.current as any)[prop];
-                if (typeof value === 'object' && value !== null) {
-                    return new Proxy(value, {
-                        get(innerTarget, innerProp: string, innerReceiver) {
-                            return createPathProxy([...propPath, prop, innerProp]);
-                        },
-                        set(innerTarget, innerProp: string, newValue) {
-                            const nestedPath = [...propPath, prop, innerProp];
-                            const { modifiedValue, cancelUpdate } = buildChangeHandler(newValue);
-                            if (!cancelUpdate) {
-                                const lastKey = nestedPath.pop();
-                                const parent = nestedPath.reduce((acc, key) => acc[key], state.current as any);
-                                parent[lastKey as keyof typeof parent] = modifiedValue;
-                                notifySubscribers(nestedPath);
-                            }
-                            return true;
-                        },
-                    });
-                } else {
-                    return value;
-                }
+                return createPathProxy([...propPath, prop]);
             },
             set(target: any, prop: string, value: any) {
-                // Clear all memoized proxies
-                const fullPath = pathStr ? `${pathStr}.${prop}` : prop;
-                const fullPathDot = pathStr ? `${pathStr}.${prop}.` : `${prop}.`; // Should clear memoized proxies for nested props also
-                Object.keys(memoizedProxies).forEach(key => {
-                    if (key === fullPath || key.startsWith(fullPathDot)) {
-                        memoizedProxies.delete(key);
-                    }
-                });
-
                 const parent = propPath.reduce((obj, cur) => {
                     const p = obj[cur] ?? {}; // If no object exists for current path, then create that object
                     obj[cur] = p;
                     return p;
                 }, state.current as any);
 
-                parent[prop] = value;
+                const { modifiedValue, cancelUpdate } = buildChangeHandler(value);
+                if (!cancelUpdate) {
+                    clearMemoizedProxies(pathStr ? `${pathStr}.${prop}` : prop);
+                    parent[prop] = modifiedValue;
 
-                notifySubscribers([...propPath, prop]);
+                    notifySubscribers([...propPath, prop]);
+                }
 
                 return true;
             },
         });
 
-        memoizedProxies.set(pathStr, memoizedInstance);
+        if (pathStr) {
+            memoizedProxies.set(pathStr, memoizedInstance);
+        }
 
         return memoizedInstance;
     };
@@ -189,33 +170,54 @@ export function createMutableState<T extends Record<string, any>>(
             }
 
             if (prop === 'subscribe') {
-                return (callback: Function) => {
-                    if (!pathToCallback.has(rootSubscriberKey)) {
-                        pathToCallback.set(rootSubscriberKey, new Set());
+                return (callback: Function, path?: string) => {
+                    if (!path || typeof path !== 'string') {
+                        path = rootSubscriberKey;
                     }
 
-                    const callbacks = pathToCallback.get(rootSubscriberKey) as Set<Function>;
-                    callbacks.add(callback);
-                    return () => callbacks.delete(callback);
-                }
-            }
+                    if (!pathToCallback.has(path)) {
+                        pathToCallback.set(path, new Set());
+                    }
 
-            if (prop in state.current) {
-                const value = (state.current as any)[prop];
-                if (value && typeof value !== 'object') {
-                    return value;
+                    const callbacks = pathToCallback.get(path) as Set<Function>;
+                    callbacks.add(callback);
+
+                    return () => callbacks.delete(callback);
                 }
             }
 
             return createPathProxy([prop]);
         },
 
-        set(target: T, prop: string | number, value: any, receiver: any) {
-            (state.current as any)[prop] = value;
-            notifySubscribers([prop as string]);
+        set(target: T, prop: string, value: any, receiver: any) {
+            let modifiedValue = value;
+            let cancelUpdate = false;
+
+            const modifyNewValue = (value: any) => {
+                modifiedValue = value;
+            };
+
+            const cancelChange = () => {
+                cancelUpdate = true;
+            };
+
+            if (changeHandler) {
+                changeHandler(modifiedValue, { field: prop, cancel: cancelChange, update: modifyNewValue });
+            }
+
+            if (!cancelUpdate) {
+                clearMemoizedProxies(prop);
+                (state.current as any)[prop] = modifiedValue;
+                notifySubscribers([prop]);
+            }
+
             return true;
         },
     };
 
     return new Proxy(state.current, handler) as T & MutableState<T>;
+}
+
+function getPropValue(state: any, propPath: string[]) {
+    return propPath.reduce((acc, key) => acc?.[key], state);
 }

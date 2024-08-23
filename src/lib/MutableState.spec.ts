@@ -72,7 +72,7 @@ describe('createMutableState', () => {
 
         it('should notify property-level subscribers when the specific property changes', () => {
             const callback = jest.fn();
-            mutableState.name.subscribe(callback);
+            mutableState.name.$subscribe(callback);
             mutableState.name = 'Jane';
             expect(callback).toHaveBeenCalledTimes(1);
         });
@@ -83,51 +83,57 @@ describe('createMutableState', () => {
     // Group 4: Data Type Handling Tests
     describe('Data Type Handling Tests', () => {
         it('should handle string properties correctly', () => {
-            expect(mutableState.name).toBe('John');
+            const oldName = mutableState.name;
+            expect(oldName.$value()).toBe('John');
+
             mutableState.name = 'Jane';
-            expect(mutableState.name).toBe('Jane');
+
+            const newName = mutableState.name;
+            expect(newName.$value()).toBe('Jane');
+
+            expect(oldName).not.toBe(newName);
         });
 
         it('should handle number properties correctly', () => {
-            expect(mutableState.age).toBe(30);
+            expect(mutableState.age.$value()).toBe(30);
             mutableState.age = 25;
-            expect(mutableState.age).toBe(25);
+            expect(mutableState.age.$value()).toBe(25);
         });
 
         it('should handle boolean properties correctly', () => {
-            expect(mutableState.isActive).toBe(true);
+            expect(mutableState.isActive.$value()).toBe(true);
             mutableState.isActive = false;
-            expect(mutableState.isActive).toBe(false);
+            expect(mutableState.isActive.$value()).toBe(false);
         });
 
         it('should handle array properties correctly', () => {
-            expect(mutableState.hobbies).toEqual(['reading', 'travelling']);
+            expect(mutableState.hobbies.$value()).toEqual(['reading', 'travelling']);
             mutableState.hobbies.push('cooking');
-            expect(mutableState.hobbies).toContain('cooking');
+            expect(mutableState.hobbies.$value()).toContain('cooking');
         });
 
         it('should handle null properties correctly', () => {
-            expect(mutableState.score).toBeNull();
+            expect(mutableState.score.$value()).toBeNull();
             mutableState.score = 100;
-            expect(mutableState.score).toBe(100);
+            expect(mutableState.score.$value()).toBe(100);
         });
 
         it('should handle date properties correctly', () => {
-            expect(mutableState.birthDate).toEqual(new Date('1990-01-01'));
+            expect(mutableState.birthDate.$value()).toEqual(new Date('1990-01-01'));
             mutableState.birthDate = new Date('2000-01-01');
-            expect(mutableState.birthDate).toEqual(new Date('2000-01-01'));
+            expect(mutableState.birthDate.$value()).toEqual(new Date('2000-01-01'));
         });
 
         it('should handle set properties correctly', () => {
-            expect(mutableState.uniqueTags.has('tag1')).toBe(true);
+            expect(mutableState.uniqueTags.$value().has('tag1')).toBe(true);
             mutableState.uniqueTags.add('tag3');
-            expect(mutableState.uniqueTags.has('tag3')).toBe(true);
+            expect(mutableState.uniqueTags.$value().has('tag3')).toBe(true);
         });
 
         it('should handle map properties correctly', () => {
-            expect(mutableState.metadata.size).toBe(0);
-            mutableState.metadata.set('key1', 'value1');
-            expect(mutableState.metadata.get('key1')).toBe('value1');
+            expect(mutableState.metadata.$value().size).toBe(0);
+            mutableState.metadata.$value().set('key1', 'value1');
+            expect(mutableState.metadata.$value().get('key1')).toBe('value1');
         });
 
         // Additional tests for function properties, etc.
@@ -136,9 +142,9 @@ describe('createMutableState', () => {
     // Group 5: Nested Property Tests
     describe('Nested Property Tests', () => {
         it('should allow access and modification of nested properties', () => {
-            expect(mutableState.address.street).toBe('123 Main St');
+            expect(mutableState.address.street.$value()).toBe('123 Main St');
             mutableState.address.street = '456 Elm St';
-            expect(mutableState.address.street).toBe('456 Elm St');
+            expect(mutableState.address.street.$value()).toBe('456 Elm St');
         });
 
         it('should return the same proxy instance for the same nested property access', () => {
@@ -159,12 +165,12 @@ describe('createMutableState', () => {
     // Group 6: Edge Case Tests
     describe('Edge Case Tests', () => {
         it('should handle non-existent property access gracefully', () => {
-            expect(mutableState.nonExistentProperty).toBeUndefined();
+            expect(mutableState.nonExistentProperty.someOtherRandomProp.newRandomProp.$value()).toBeUndefined();
         });
 
         it('should remove properties using the remove method', () => {
-            mutableState.address.remove();
-            expect(mutableState.address).toBeUndefined();
+            mutableState.address.$remove();
+            expect(mutableState.address.$value()).toBeUndefined();
         });
     });
 

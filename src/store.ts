@@ -4,7 +4,7 @@ import { createMutableState } from "./MutableState";
 
 export function createStore<T extends Record<string, any>>(
     initialState?: T,
-    changeHandler?: ChangeCallback<T>
+    changeHandler?: ChangeCallback<T, any>
 ): { state: T & MutableState<T> } {
     const stateProxy = createMutableState(initialState || ({} as T), changeHandler);
     return { state: stateProxy };
@@ -15,10 +15,12 @@ export function createHook<T extends Record<string, any>, R>(
     selector?: (state: T & MutableState<T>) => R
 ) {
     return (selectProp?: (state: T & MutableState<T>) => R) => {
-        const rootState = React.useMemo<any>(() =>
-            selector ? selector(store.state) as any : store.state as any, []);
+        const { rootState, state } = React.useMemo(() => {
+            const rootState = selector ? selector(store.state) as any : store.state as any;
+            const state = selectProp ? selectProp(rootState) : rootState
 
-        const state = React.useMemo(() => selectProp ? selectProp(rootState) : rootState, []);
+            return { rootState, state };
+        }, [selectProp]);
 
         const $ref = React.useRef({ rootState, state });
 
@@ -32,12 +34,12 @@ export function createHook<T extends Record<string, any>, R>(
                 if (selectProp) {
                     const newState = selectProp(newRootState);
                     $ref.current.state = newState;
-                    if (typeof newState === "object" || newState !== $ref.current.state) {
+                    if (newState !== $ref.current.state) {
                         triggerUpdate({});
                     }
                 } else {
-                    $ref.current.state = rootState;
-                    if (typeof rootState === "object" || rootState !== $ref.current.rootState) {
+                    $ref.current.state = newRootState;
+                    if (newRootState !== $ref.current.rootState) {
                         triggerUpdate({});
                     }
                 }

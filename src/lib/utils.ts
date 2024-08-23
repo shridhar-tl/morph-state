@@ -1,3 +1,5 @@
+import { ChangeCallback } from "../types";
+
 export function deepClone<T>(value: T): T {
     const references = new WeakMap<any, any>();
 
@@ -73,4 +75,33 @@ export function deepClone<T>(value: T): T {
     }
 
     return _deepClone(value);
+}
+
+export function withChangeHandler(state: any): (e: any) => void {
+    return state.$changeHandler;
+}
+
+export function withEventHandler<T, N>(state: any, filter?: ChangeCallback<T, N>): (e: any) => void {
+    return state.$eventHandler(filter);
+}
+
+export function getValue(state: any): any {
+    return state.$value ? state.$value() : state;
+}
+
+export function isUndefined(state: any): boolean {
+    return getValue(state) === undefined;
+}
+
+export function isNull(state: any): boolean {
+    return getValue(state) === null;
+}
+
+export function isNullOrUndefined(state: any): boolean {
+    const value = getValue(state);
+    return value === undefined || value === null;
+}
+
+export function isTruthy(state: any): boolean {
+    return Boolean(getValue(state));
 }
