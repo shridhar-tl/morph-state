@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/ban-types */
 import { unstable_batchedUpdates } from './batchedUpdates';
-import { deepClone, setObjectValue } from './lib/utils';
+import { deepClone, getObjectValue, setObjectValue } from './lib/utils';
 import { ChangeCallback, MutableState, StateProperty } from "./types";
 
 const rootSubscriberKey = '';
@@ -84,10 +84,8 @@ export function createMutableState<T extends Record<string, any>>(
             return { modifiedValue, cancelUpdate };
         };
 
-        memoizedInstance = new Proxy({
-            $value: () => {
-                return getPropValue(state.current, propPath);
-            },
+        const proxyBase = {
+            $value: () => getObjectValue(state.current, propPath),
             $remove: () => {
                 const newState = setObjectValue(state.current, propPath);
                 if (newState !== state.current) {
@@ -112,7 +110,36 @@ export function createMutableState<T extends Record<string, any>>(
 
                 return () => callbacks.delete(callback);
             }
-        }, {
+        };
+
+        const curValue = proxyBase.$value();
+        if (curValue && curValue instanceof Set) {
+            (proxyBase as any).add = (value: any) => {
+                const newSetObj = new Set(curValue);
+                newSetObj.add(value);
+                proxyBase.$changeHandler(newSetObj);
+                return newSetObj;
+            };
+            (proxyBase as any).delete = (value: any) => {
+                const newSetObj = new Set(curValue);
+                newSetObj.delete(value);
+                proxyBase.$changeHandler(newSetObj);
+                return newSetObj;
+            };
+            (proxyBase as any).clear = () => {
+                const newSetObj = new Set();
+                proxyBase.$changeHandler(newSetObj);
+                return newSetObj;
+            };
+        } else if (Array.isArray(curValue)) {
+            (proxyBase as any).push = (value: any) => {
+                const newArr = [...curValue, value];
+                proxyBase.$changeHandler(newArr);
+                return newArr;
+            };
+        }
+
+        memoizedInstance = new Proxy(proxyBase, {
             get(target: any, prop: string, receiver: any) {
                 if (typeof prop === 'symbol') return Reflect.get(target, prop, receiver);
 
@@ -202,8 +229,4 @@ export function createMutableState<T extends Record<string, any>>(
     };
 
     return new Proxy(state.current, handler) as T & MutableState<T>;
-}
-
-function getPropValue(state: any, propPath: string[]) {
-    return propPath.reduce((acc, key) => acc?.[key], state);
 }
