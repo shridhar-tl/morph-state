@@ -105,3 +105,66 @@ export function isNullOrUndefined(state: any): boolean {
 export function isTruthy(state: any): boolean {
     return Boolean(getValue(state));
 }
+
+export function setObjectValue(obj: any, path: string[], value?: any): any {
+    const currentValue = getObjectValue(obj, path);
+
+    if (currentValue === value) { return obj; } // If target value is same as current value, then return same object.
+
+    return setObjValue(obj, path, value);
+}
+
+function setObjValue(obj: any, path: string[], value?: any): any {
+    if (path.length === 0) return value;
+
+    const [key, ...restPath] = path;
+
+    if (obj === null || typeof obj !== 'object') {
+        obj = {};
+    } else if (Array.isArray(obj)) {
+        obj = [...obj];
+    } else if (obj instanceof Map) {
+        obj = new Map(obj);
+    } else {
+        obj = { ...obj };
+    }
+
+    if (obj instanceof Map) {
+        if (restPath.length === 0 && value === undefined) {
+            obj.delete(key);
+        } else {
+            const cloneValue = setObjValue(obj.get(key), restPath, value);
+            obj.set(key, cloneValue);
+        }
+    } else {
+        if (restPath.length === 0 && value === undefined) {
+            delete obj[key];
+        } else {
+            obj[key] = setObjValue(obj[key], restPath, value);
+        }
+    }
+
+    return obj;
+}
+
+export function getObjectValue(obj: any, path: string[]): any {
+    let current = obj;
+
+    for (let i = 0; i < path.length; i++) {
+        const key = path[i];
+
+        if (current === null || current === undefined) {
+            return undefined;
+        }
+
+        if (current instanceof Map) {
+            current = current.get(key);
+        } else if (typeof current === 'object' && key in current) {
+            current = current[key];
+        } else {
+            return undefined;
+        }
+    }
+
+    return current;
+}

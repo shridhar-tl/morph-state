@@ -2,12 +2,17 @@ import React from 'react';
 import { ChangeCallback, MutableState } from "./types";
 import { createMutableState } from "./MutableState";
 
+type StoreResult<T extends Record<string, any>> = {
+    state: T & MutableState<T>;
+    subscribe: (callback: (state: any) => void, path?: string) => () => void
+};
+
 export function createStore<T extends Record<string, any>>(
     initialState?: T,
     changeHandler?: ChangeCallback<T, any>
-): { state: T & MutableState<T> } {
+): StoreResult<T> {
     const stateProxy = createMutableState(initialState || ({} as T), changeHandler);
-    return { state: stateProxy };
+    return { state: stateProxy, subscribe: stateProxy.subscribe };
 }
 
 export function createHook<T extends Record<string, any>, R>(

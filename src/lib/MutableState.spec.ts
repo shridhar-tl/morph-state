@@ -24,7 +24,6 @@ describe('createMutableState', () => {
         mutableState = createMutableState(initialState, changeHandlerSpy);
     });
 
-    // Group 1: Initialization Tests
     describe('Initialization Tests', () => {
         it('should initialize with an empty state if no initial state is provided', () => {
             const emptyState = createMutableState();
@@ -41,7 +40,6 @@ describe('createMutableState', () => {
         });
     });
 
-    // Group 2: Basic Functional Tests
     describe('Basic Functional Tests', () => {
         it('should return the current state with toJSON method', () => {
             const currentState = mutableState.toJSON();
@@ -61,7 +59,6 @@ describe('createMutableState', () => {
         });
     });
 
-    // Group 3: Subscribe Tests
     describe('Subscribe Tests', () => {
         it('should notify root-level subscribers when any part of the state changes', () => {
             const callback = jest.fn();
@@ -80,7 +77,6 @@ describe('createMutableState', () => {
         // More tests to ensure other properties' changes do not trigger this callback
     });
 
-    // Group 4: Data Type Handling Tests
     describe('Data Type Handling Tests', () => {
         it('should handle string properties correctly', () => {
             const oldName = mutableState.name;
@@ -139,7 +135,6 @@ describe('createMutableState', () => {
         // Additional tests for function properties, etc.
     });
 
-    // Group 5: Nested Property Tests
     describe('Nested Property Tests', () => {
         it('should allow access and modification of nested properties', () => {
             expect(mutableState.address.street.$value()).toBe('123 Main St');
@@ -158,11 +153,8 @@ describe('createMutableState', () => {
             mutableState.address.street = '789 Park Ave';
             expect(streetProxy).not.toBe(mutableState.address.street);
         });
-
-        // More nested level properties tests
     });
 
-    // Group 6: Edge Case Tests
     describe('Edge Case Tests', () => {
         it('should handle non-existent property access gracefully', () => {
             expect(mutableState.nonExistentProperty.someOtherRandomProp.newRandomProp.$value()).toBeUndefined();

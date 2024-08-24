@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/ban-types */
 import { unstable_batchedUpdates } from './batchedUpdates';
-import { deepClone } from './lib/utils';
+import { deepClone, setObjectValue } from './lib/utils';
 import { ChangeCallback, MutableState, StateProperty } from "./types";
 
 const rootSubscriberKey = '';
@@ -43,6 +43,19 @@ export function createMutableState<T extends Record<string, any>>(
         });
     }
 
+    function setStatePropValue(path: string[], buildChangeHandler: any, value?: any) {
+        const { modifiedValue, cancelUpdate } = buildChangeHandler(value);
+
+        if (!cancelUpdate) {
+            const newState = setObjectValue(state.current, path, modifiedValue);
+            if (newState !== state.current) {
+                clearMemoizedProxies(path.join('.'));
+                state.current = newState;
+                notifySubscribers(path);
+            }
+        }
+    }
+
     const createPathProxy = (propPath: Array<string>): StateProperty => {
         const isValidPath = propPath.every(v => typeof v === 'string');
         const pathStr: string = isValidPath ? propPath.join('.') : '';
@@ -76,32 +89,18 @@ export function createMutableState<T extends Record<string, any>>(
                 return getPropValue(state.current, propPath);
             },
             $remove: () => {
-                const lastKey = propPath.pop();
-                const parent = getPropValue(state.current, propPath);
-                if (!parent) { return; }
-                delete parent[lastKey as keyof typeof parent];
-                notifySubscribers(propPath);
+                const newState = setObjectValue(state.current, propPath);
+                if (newState !== state.current) {
+                    state.current = newState;
+                    notifySubscribers(propPath);
+                }
             },
             $eventHandler: (callback?: (value: any) => void) => (event: any) => {
                 const value = event.target.value;
-                const { modifiedValue, cancelUpdate } = buildChangeHandler(value, callback ?? changeHandler);
-
-                if (!cancelUpdate) {
-                    const lastKey = propPath.pop();
-                    const parent = getPropValue(state.current, propPath);
-                    parent[lastKey as keyof typeof parent] = modifiedValue;
-                    notifySubscribers(propPath);
-                }
+                setStatePropValue(propPath, (v: any) => buildChangeHandler(v, callback), value);
             },
             $changeHandler: (value: any) => {
-                const { modifiedValue, cancelUpdate } = buildChangeHandler(value);
-
-                if (!cancelUpdate) {
-                    const lastKey = propPath.pop();
-                    const parent = getPropValue(state.current, propPath);
-                    parent[lastKey as keyof typeof parent] = modifiedValue;
-                    notifySubscribers(propPath);
-                }
+                setStatePropValue(propPath, buildChangeHandler, value);
             },
             $subscribe: (callback: Function) => {
                 if (!pathToCallback.has(pathStr)) {
@@ -123,21 +122,8 @@ export function createMutableState<T extends Record<string, any>>(
 
                 return createPathProxy([...propPath, prop]);
             },
-            set(target: any, prop: string, value: any) {
-                const parent = propPath.reduce((obj, cur) => {
-                    const p = obj[cur] ?? {}; // If no object exists for current path, then create that object
-                    obj[cur] = p;
-                    return p;
-                }, state.current as any);
-
-                const { modifiedValue, cancelUpdate } = buildChangeHandler(value);
-                if (!cancelUpdate) {
-                    clearMemoizedProxies(pathStr ? `${pathStr}.${prop}` : prop);
-                    parent[prop] = modifiedValue;
-
-                    notifySubscribers([...propPath, prop]);
-                }
-
+            set(_: any, prop: string, value: any) {
+                setStatePropValue([...propPath, prop], buildChangeHandler, value);
                 return true;
             },
         });
@@ -150,7 +136,7 @@ export function createMutableState<T extends Record<string, any>>(
     };
 
     const handler: any = {
-        get(target: T, prop: string, receiver: any) {
+        get(_: T, prop: string) {
             if (prop === 'toJSON') {
                 return () => deepClone(state.current);
             }
@@ -189,7 +175,7 @@ export function createMutableState<T extends Record<string, any>>(
             return createPathProxy([prop]);
         },
 
-        set(target: T, prop: string, value: any, receiver: any) {
+        set(_: T, prop: string, value: any) {
             let modifiedValue = value;
             let cancelUpdate = false;
 
