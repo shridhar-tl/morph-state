@@ -3,6 +3,7 @@ import { MorphStateProvider, useMorphState } from '../Context';
 import { createStore, createHook } from '../store';
 import { useMutableState } from '../useMutableState';
 import { ExampleProps } from './types';
+import { valueOf } from '../lib/utils';
 
 export const examples: ExampleProps[] = [
     {
@@ -19,11 +20,11 @@ const ComponentExample = () => {
             <h3>Component State Example</h3>
             <input
                 type="text"
-                value={state.name}
+                value={valueOf(state.name)}
                 onChange={e => state.name = e.target.value}
             />
-            <p>{state.name}</p>
-            <p>{state.age}</p>
+            <p>{valueOf(state.name)}</p>
+            <p>{valueOf(state.age)}</p>
         </div>
     );
 };
@@ -37,11 +38,11 @@ export default ComponentExample;
                     <h3>Component State Example</h3>
                     <input
                         type="text"
-                        value={state.name}
+                        value={valueOf(state.name)}
                         onChange={e => state.name = e.target.value}
                     />
-                    <p>{state.name}</p>
-                    <p>{state.age}</p>
+                    <p>{valueOf(state.name)}</p>
+                    <p>{valueOf(state.age)}</p>
                 </div>
             );
         }
@@ -57,40 +58,39 @@ const useGlobalState = createHook(store);
 
 const GlobalStoreExample = () => {
     const state = useGlobalState();
-    const age = useGlobalState(s => s.age);
+    const age = useGlobalState(s => s.age, true);
 
     return (
         <div>
             <h3>Global Store Example</h3>
             <input
                 type="text"
-                value={state.name}
+                value={valueOf(state.name)}
                 onChange={e => state.name = e.target.value}
             />
-            <p>Name: {state.name}</p>
+            <p>Name: {valueOf(state.name)}</p>
             <p>Age: {age}</p>
         </div>
     );
 };
 
-const useGlobalState = createHook(store);
 export default GlobalStoreExample;
         `,
         component: () => {
             const store = React.useMemo(() => createStore({ name: "Jane", age: 30 }), []);
             const useGlobalState = React.useMemo(() => createHook(store), [store]);
             const state = useGlobalState();
-            const age = useGlobalState(s => s.age);
+            const age = useGlobalState(s => s.age, true);
 
             return (
                 <div>
                     <h3>Global Store Example</h3>
                     <input
                         type="text"
-                        value={state.name}
+                        value={valueOf(state.name)}
                         onChange={e => state.name = e.target.value}
                     />
-                    <p>Name: {state.name}</p>
+                    <p>Name: {valueOf(state.name)}</p>
                     <p>Age: {age}</p>
                 </div>
             );
@@ -115,11 +115,11 @@ const ContextExample = () => {
             <h3>Context Example</h3>
             <input
                 type="text"
-                value={state.name}
+                value={valueOf(state.name)}
                 onChange={e => state.name = e.target.value}
             />
-            <p>{state.name}</p>
-            <p>{state.age}</p>
+            <p>{valueOf(state.name)}</p>
+            <p>{valueOf(state.age)}</p>
         </div>
     );
 };
@@ -137,17 +137,17 @@ export default App;
 
             const ContextExample = () => {
                 const state = useMorphState();
-                const age = useMorphState(s => s.age);
+                const age = useMorphState(s => s.age, true);
 
                 return (
                     <div>
                         <h3>Context Example</h3>
                         <input
                             type="text"
-                            value={state.name}
+                            value={valueOf(state.name)}
                             onChange={e => state.name = e.target.value}
                         />
-                        <p>{state.name}</p>
+                        <p>{valueOf(state.name)}</p>
                         <p>{age}</p>
                     </div>
                 );

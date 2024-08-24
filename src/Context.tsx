@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useRef } from 'react';
 import { MutableState, ProviderProps } from "./types";
 import { createMutableState } from './MutableState';
+import { valueOf } from './lib/utils';
 
 const MorphStateContext = createContext<any>(null);
 
@@ -23,7 +24,8 @@ export function MorphStateProvider<T extends Record<string, any>>({
 }
 
 export function useMorphState<T extends Record<string, any>, R = T>(
-    selector?: (state: T) => R
+    selector?: (state: T) => R,
+    raw?: boolean
 ): R | T {
     const contextState = useContext<T>(MorphStateContext);
 
@@ -40,7 +42,7 @@ export function useMorphState<T extends Record<string, any>, R = T>(
             //const relevantState: any = selector(contextState);
             return contextState.subscribe(() => { // ToDo: Need to optimize it to subscribe only for specific property
                 const newState = selector(contextState);
-                setSelectedState(newState);
+                setSelectedState(raw ? valueOf(newState) : newState);
             });
         } else {
             return contextState.subscribe(() => setSelectedState({} as any));

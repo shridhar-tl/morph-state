@@ -85,25 +85,25 @@ export function withEventHandler<T, N>(state: any, filter?: ChangeCallback<T, N>
     return state.$eventHandler(filter);
 }
 
-export function getValue(state: any): any {
+export function valueOf(state: any): any {
     return state.$value ? state.$value() : state;
 }
 
 export function isUndefined(state: any): boolean {
-    return getValue(state) === undefined;
+    return valueOf(state) === undefined;
 }
 
 export function isNull(state: any): boolean {
-    return getValue(state) === null;
+    return valueOf(state) === null;
 }
 
 export function isNullOrUndefined(state: any): boolean {
-    const value = getValue(state);
+    const value = valueOf(state);
     return value === undefined || value === null;
 }
 
 export function isTruthy(state: any): boolean {
-    return Boolean(getValue(state));
+    return Boolean(valueOf(state));
 }
 
 export function setObjectValue(obj: any, path: string[], value?: any): any {

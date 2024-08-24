@@ -4,7 +4,7 @@ import { createMutableState } from './MutableState';
 
 export function useMutableState<T extends Record<string, any>>(
     initialState?: T,
-    changeHandler?: ChangeCallback<T>
+    changeHandler?: ChangeCallback<T, any>
 ): MutableStateHook<T> {
     const stateRef = useRef<T & MutableState<T>>();
     const [, setState] = useState<Partial<T>>({});

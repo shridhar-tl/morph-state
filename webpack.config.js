@@ -8,13 +8,13 @@ module.exports = (env, argv) => {
 
   return {
     mode: isProduction ? 'production' : 'development',
-    entry: {
+    entry: isProduction ? './src/index.ts' : {
       demo: './src/demo/index.tsx',
       lib: './src/index.ts'
     },
     output: {
       path: path.resolve(__dirname, 'dist'),
-      filename: '[name].js',
+      filename: isProduction ? 'index.js' : '[name].js',
       library: 'morph-state',
       libraryTarget: 'umd',
       globalObject: 'this',
@@ -67,7 +67,7 @@ module.exports = (env, argv) => {
           { from: 'LICENSE', to: './' }
         ]
       }),
-      new HtmlWebpackPlugin({
+      !isProduction && new HtmlWebpackPlugin({
         template: './src/demo/index.html',
         filename: 'index.html',
         chunks: ['demo']
