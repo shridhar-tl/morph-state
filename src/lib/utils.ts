@@ -1,4 +1,4 @@
-import { ChangeCallback } from "../types";
+import { ChangeCallback, InterceptorConfig } from "../types";
 
 export function deepClone<T>(value: T): T {
     const references = new WeakMap<any, any>();
@@ -86,7 +86,7 @@ export function withEventHandler<T, N>(state: any, filter?: ChangeCallback<T, N>
 }
 
 export function valueOf(state: any): any {
-    return state.$value ? state.$value() : state;
+    return state?.__ms_prx ? state.$value : state;
 }
 
 export function isUndefined(state: any): boolean {
@@ -104,6 +104,10 @@ export function isNullOrUndefined(state: any): boolean {
 
 export function isTruthy(state: any): boolean {
     return Boolean(valueOf(state));
+}
+
+export function withConfig(store: any, config: InterceptorConfig) {
+    return store?.withConfig?.(config);
 }
 
 export function setObjectValue(obj: any, path: string[], value?: any): any {

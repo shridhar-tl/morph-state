@@ -21,10 +21,10 @@ export interface MutableState<T extends Record<string, any>> {
 }
 
 export interface StateProperty {
-    remove: () => void;
-    changeHandler: (callback: (value: any) => void) => (event: any) => void;
-    useCallback: () => (value: any) => void;
-    subscribe: (callback: Function) => Function;
+    $remove: () => void;
+    $eventHandler: (callback: (value: any) => void) => (event: any) => void;
+    $changeHandler: (value: any) => void;
+    $subscribe: (callback: Function) => Function;
 }
 
 export interface ProxyHandlerContext<T> {
@@ -43,3 +43,14 @@ export type ProviderProps<T> = {
     onChange?: ChangeCallback<T, any>;
     children: any;
 };
+
+
+export type InterceptorConfig = {
+    interceptUndefined?: boolean,
+    interceptNull?: boolean,
+    interceptObjects?: boolean,
+    interceptAll?: boolean,
+    interceptValues?: boolean,
+    interceptArrays?: boolean,
+    interceptSpecialObjects?: boolean,
+}

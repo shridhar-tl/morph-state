@@ -1,8 +1,7 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/ban-types */
 import { unstable_batchedUpdates } from './batchedUpdates';
 import { deepClone, getObjectValue, setObjectValue } from './lib/utils';
-import { ChangeCallback, MutableState, StateProperty } from "./types";
+import { ChangeCallback, InterceptorConfig, MutableState, StateProperty } from "./types";
 
 const rootSubscriberKey = '';
 
@@ -10,109 +9,85 @@ type StateWrapper<T> = { current: T };
 
 export function createMutableState<T extends Record<string, any>>(
     initialState?: T,
-    changeHandler?: ChangeCallback<T, any>
-): T & MutableState<T> {
+    configOrCallback?: ChangeCallback<T, any> | (InterceptorConfig & { changeHandler: ChangeCallback<T, any> })
+): MutableState<T> {
+    let changeHandler!: ChangeCallback<T, any>;
+    let config!: InterceptorConfig;
+
+    if (typeof configOrCallback === "function") {
+        changeHandler = configOrCallback;
+    } else if (configOrCallback && typeof configOrCallback === "object") {
+        const { changeHandler: handler, ...configOptions } = configOrCallback;
+        if (typeof handler === "function") {
+            changeHandler = handler;
+        }
+        config = configOptions;
+    }
+
+    const __ms__ref = "s7jebsld"; // Need to generate random id
     const constructInitialState = () => initialState ? deepClone(initialState) : {} as T;
     const state: StateWrapper<T> = { current: constructInitialState() };
 
+    // Contains reference to all the subscribers based on individual path
     const pathToCallback: Map<string, Set<Function>> = new Map();
 
-    const notifySubscribers = (propPath: (string | number)[]) => {
-        unstable_batchedUpdates(() => {
-            let path = "";
-            for (const key of propPath) {
-                path = path ? `${path}.${key}` : String(key);
-                const callbacks = pathToCallback.get(path);
-                callbacks?.forEach(callback => callback());
-            }
+    // Contains list of subscribers to notify based on currently running changes
+    const subscribersToNotify = new Set<string>(); // This would be cleared every time after notified
 
-            // Notify root subscribers if any part of the state changes
-            pathToCallback.get(rootSubscriberKey)?.forEach(callback => callback());
-        });
+    // Contains the reference for timer when subscriber notification is scheduled
+    let subscriberRunner: (NodeJS.Timeout | null) = null;
+
+    const notifySubscribers = (pathStr: string) => {
+        subscribersToNotify.add(pathStr);
+
+        if (subscriberRunner) { return; } // This means already subscriber is waiting to run
+
+        subscriberRunner = setTimeout(() => {
+            subscriberRunner = null; // Clear the schedule reference when execution starts
+
+            // Batch react specific rerendering
+            unstable_batchedUpdates(() => {
+                const availableSubscribers = Array.from(pathToCallback.keys());
+                const finalSubscriberPathsToNotify = new Set<string>();
+                subscribersToNotify.forEach(path => {
+                    const toNotify = availableSubscribers.filter(p => p === path || path.startsWith(`${p}.`))
+                    toNotify.forEach(p => finalSubscriberPathsToNotify.add(p));
+                });
+
+                subscribersToNotify.clear(); // Clear the paths list after collating the list
+                finalSubscriberPathsToNotify.add(rootSubscriberKey); // Notify root subscribers if any part of the state changes
+
+                const finalSubscribersToNotify = new Set<Function>();
+                finalSubscriberPathsToNotify.forEach(p => {
+                    const callbacks = pathToCallback.get(p);
+                    if (callbacks) {
+                        callbacks.forEach(c => finalSubscribersToNotify.add(c));
+                    }
+                });
+
+                finalSubscribersToNotify.forEach(callback => callback());
+            });
+        }, 0);
     };
 
-    const memoizedProxies = new Map<string, StateProperty>();
 
-    function clearMemoizedProxies(fullPath: string) {
-        // Clear all memoized proxies
-        const fullPathDot = `${fullPath}.`; // Should clear memoized proxies for nested props also
-        memoizedProxies.forEach((_, key) => {
-            if (key === fullPath || key.startsWith(fullPathDot)) {
-                memoizedProxies.delete(key);
-            }
-        });
-    }
-
-    function setStatePropValue(path: string[], buildChangeHandler: any, value?: any) {
-        const { modifiedValue, cancelUpdate } = buildChangeHandler(value);
-
-        if (!cancelUpdate) {
-            const newState = setObjectValue(state.current, path, modifiedValue);
-            if (newState !== state.current) {
-                clearMemoizedProxies(path.join('.'));
-                state.current = newState;
-                notifySubscribers(path);
-            }
-        }
-    }
-
-    const createPathProxy = (propPath: Array<string>): StateProperty => {
-        const isValidPath = propPath.every(v => typeof v === 'string');
-        const pathStr: string = isValidPath ? propPath.join('.') : '';
-
-        let memoizedInstance = memoizedProxies.get(pathStr) as StateProperty;
-        if (memoizedInstance) {
-            return memoizedInstance;
+    function subscribe(callback: Function, path?: string) {
+        if (!path || typeof path !== 'string') {
+            path = rootSubscriberKey;
         }
 
-        const buildChangeHandler = (newValue: any, callback: ChangeCallback<T, any> | undefined = changeHandler) => {
-            let modifiedValue = newValue;
-            let cancelUpdate = false;
+        if (!pathToCallback.has(path)) {
+            pathToCallback.set(path, new Set());
+        }
 
-            const modifyNewValue = (value: any) => {
-                modifiedValue = value;
-            };
+        const callbacks = pathToCallback.get(path) as Set<Function>;
+        callbacks.add(callback);
 
-            const cancelChange = () => {
-                cancelUpdate = true;
-            };
+        return () => callbacks.delete(callback);
+    }
 
-            if (callback) {
-                callback(newValue, { field: pathStr, cancel: cancelChange, update: modifyNewValue });
-            }
-
-            return { modifiedValue, cancelUpdate };
-        };
-
-        const proxyBase = {
-            $value: () => getObjectValue(state.current, propPath),
-            $remove: () => {
-                const newState = setObjectValue(state.current, propPath);
-                if (newState !== state.current) {
-                    state.current = newState;
-                    notifySubscribers(propPath);
-                }
-            },
-            $eventHandler: (callback?: (value: any) => void) => (event: any) => {
-                const value = event.target.value;
-                setStatePropValue(propPath, (v: any) => buildChangeHandler(v, callback), value);
-            },
-            $changeHandler: (value: any) => {
-                setStatePropValue(propPath, buildChangeHandler, value);
-            },
-            $subscribe: (callback: Function) => {
-                if (!pathToCallback.has(pathStr)) {
-                    pathToCallback.set(pathStr, new Set());
-                }
-
-                const callbacks = pathToCallback.get(pathStr) as Set<Function>;
-                callbacks.add(callback);
-
-                return () => callbacks.delete(callback);
-            }
-        };
-
-        const curValue = proxyBase.$value();
+    function setHandlersForSpecialObjects(proxyBase: any) {
+        const curValue = proxyBase.$value;
         if (curValue && curValue instanceof Set) {
             (proxyBase as any).add = (value: any) => {
                 const newSetObj = new Set(curValue);
@@ -138,95 +113,154 @@ export function createMutableState<T extends Record<string, any>>(
                 return newArr;
             };
         }
+    }
 
-        memoizedInstance = new Proxy(proxyBase, {
-            get(target: any, prop: string, receiver: any) {
-                if (typeof prop === 'symbol') return Reflect.get(target, prop, receiver);
+    function buildChangeHandler(newValue: any, pathStr = '', callback: ChangeCallback<T, any> | undefined = changeHandler) {
+        let modifiedValue = newValue;
+        let cancelUpdate = false;
 
-                if (target[prop]) { // Target will only contain api functions like $value, $subscribe, $changeHandler, etc
-                    return target[prop];
-                }
+        const modifyNewValue = (value: any) => {
+            modifiedValue = value;
+        };
 
-                return createPathProxy([...propPath, prop]);
-            },
-            set(_: any, prop: string, value: any) {
-                setStatePropValue([...propPath, prop], buildChangeHandler, value);
-                return true;
-            },
-        });
+        const cancelChange = () => {
+            cancelUpdate = true;
+        };
 
-        if (pathStr) {
-            memoizedProxies.set(pathStr, memoizedInstance);
+        if (callback) {
+            callback(newValue, { field: pathStr, cancel: cancelChange, update: modifyNewValue });
         }
 
-        return memoizedInstance;
+        return { modifiedValue, cancelUpdate };
+    }
+
+    const rootObject = {
+        toJSON: () => deepClone(state.current),
+        replace: (newState: T) => {
+            state.current = newState;
+            notifySubscribers(rootSubscriberKey);
+        },
+        reset: () => rootObject.replace(constructInitialState()),
+        subscribe,
+        withConfig,
+        __ms__ref
     };
 
-    const handler: any = {
-        get(_: T, prop: string) {
-            if (prop === 'toJSON') {
-                return () => deepClone(state.current);
-            }
+    function withConfig(config: InterceptorConfig) {
+        const { interceptUndefined, interceptNull, interceptObjects, interceptArrays, interceptSpecialObjects, interceptValues } = config;
 
-            if (prop === 'replace') {
-                return (newState: T) => {
-                    state.current = newState;
-                    notifySubscribers([]);
-                };
-            }
+        const memoizedProxies = new Map<string, StateProperty>();
 
-            if (prop === 'reset') {
-                return () => {
-                    state.current = constructInitialState();
-                    notifySubscribers([]);
-                };
-            }
-
-            if (prop === 'subscribe') {
-                return (callback: Function, path?: string) => {
-                    if (!path || typeof path !== 'string') {
-                        path = rootSubscriberKey;
-                    }
-
-                    if (!pathToCallback.has(path)) {
-                        pathToCallback.set(path, new Set());
-                    }
-
-                    const callbacks = pathToCallback.get(path) as Set<Function>;
-                    callbacks.add(callback);
-
-                    return () => callbacks.delete(callback);
-                }
-            }
-
-            return createPathProxy([prop]);
-        },
-
-        set(_: T, prop: string, value: any) {
-            let modifiedValue = value;
-            let cancelUpdate = false;
-
-            const modifyNewValue = (value: any) => {
-                modifiedValue = value;
-            };
-
-            const cancelChange = () => {
-                cancelUpdate = true;
-            };
-
-            if (changeHandler) {
-                changeHandler(modifiedValue, { field: prop, cancel: cancelChange, update: modifyNewValue });
-            }
+        function setStatePropValue(path: string[], buildChangeHandler: any = changeHandler, value?: any) {
+            const { modifiedValue, cancelUpdate } = buildChangeHandler?.(value) ?? { modifiedValue: value };
 
             if (!cancelUpdate) {
-                clearMemoizedProxies(prop);
-                (state.current as any)[prop] = modifiedValue;
-                notifySubscribers([prop]);
+                const newState = setObjectValue(state.current, path, modifiedValue);
+                if (newState !== state.current) {
+                    const fullPath = path.join('.');
+                    clearMemoizedProxies(memoizedProxies, fullPath);
+                    state.current = newState;
+                    notifySubscribers(fullPath);
+                }
+            }
+        }
+
+        function getHandlerForProxy(propPath?: string[], changeHandlerBuilderFunction: any = buildChangeHandler) {
+            return {
+                get(target: any, prop: string, receiver: any) {
+                    if (typeof prop === 'symbol') return Reflect.get(target, prop, receiver);
+
+                    if (prop === "__ms_prx") {
+                        return true;
+                    }
+
+                    if (Object.hasOwn(target, prop)) { // Target will only contain api functions like $value, $subscribe, $changeHandler, etc
+                        return target[prop];
+                    }
+
+                    if (prop === '$value') { // This will happen only for root state
+                        return deepClone(state.current);
+                    }
+
+                    const value = getObjectValue(propPath ? target.$value : state.current, [prop]);
+                    const valueType = typeof value;
+
+                    if (valueType === "undefined") {
+                        if (interceptUndefined !== true) {
+                            return value;
+                        }
+                    } else if (value === null) {
+                        if (interceptNull !== true) {
+                            return value;
+                        }
+                    } else if (Array.isArray(value)) {
+                        if (interceptArrays === false) {
+                            return value;
+                        }
+                    } else if (value instanceof Map || value instanceof Set) {
+                        if (interceptSpecialObjects === false) {
+                            return value;
+                        }
+                    } else if (valueType === "object" && !(value instanceof Date) && !(value instanceof String)) {
+                        if (interceptObjects === false) {
+                            return value;
+                        }
+                    } else if (interceptValues !== true) {
+                        return value;
+                    }
+
+                    return createPathProxy(propPath ? [...propPath, prop] : [prop]);
+                },
+                set(_: any, prop: string, value: any) {
+                    setStatePropValue(propPath ? [...propPath, prop] : [prop], changeHandlerBuilderFunction, value);
+                    return true;
+                },
+            }
+        }
+
+        function createPathProxy(propPath: Array<string>): StateProperty {
+            const isValidPath = propPath.every(v => typeof v === 'string');
+            const pathStr: string = isValidPath ? propPath.join('.') : '';
+
+            let memoizedInstance = memoizedProxies.get(pathStr) as StateProperty;
+            if (memoizedInstance) {
+                return memoizedInstance;
             }
 
-            return true;
-        },
-    };
+            const proxyBase = {
+                $value: getObjectValue(state.current, propPath),
+                $remove: () => setStatePropValue(propPath, (v: any) => buildChangeHandler(v, pathStr)),
+                $eventHandler: (callback?: (value: any) => void) => (event: any) => setStatePropValue(propPath, (v: any) => buildChangeHandler(v, pathStr, callback), event.target.value),
+                $changeHandler: (value: any) => setStatePropValue(propPath, (v: any) => buildChangeHandler(v, pathStr), value),
+                $subscribe: (callback: Function) => subscribe(callback, pathStr)
+            };
 
-    return new Proxy(state.current, handler) as T & MutableState<T>;
+            setHandlersForSpecialObjects(proxyBase);
+
+            memoizedInstance = new Proxy(proxyBase, getHandlerForProxy(propPath, buildChangeHandler));
+
+            if (pathStr) {
+                memoizedProxies.set(pathStr, memoizedInstance);
+            }
+
+            return memoizedInstance;
+        }
+
+        return new Proxy({
+            ...rootObject,
+            withConfig: (newConfig: InterceptorConfig) => withConfig({ ...config, ...newConfig })
+        }, getHandlerForProxy()) as MutableState<T>;
+    }
+
+    return withConfig(config ?? {});
+}
+
+
+function clearMemoizedProxies(memoizedProxies: Map<string, StateProperty>, fullPath: string) {
+    const fullPathDot = `${fullPath}.`; // Should clear memoized proxies for nested props also
+    memoizedProxies.forEach((_, key) => {
+        if (key === fullPath || key.startsWith(fullPathDot) || fullPath.startsWith(`${key}.`)) {
+            memoizedProxies.delete(key);
+        }
+    });
 }
