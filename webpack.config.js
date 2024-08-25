@@ -41,7 +41,7 @@ module.exports = (env, argv) => {
         },
       ],
     },
-    externals: isProduction ? {
+    externals: isProduction && !isExampleMode ? {
       react: {
         commonjs: 'react',
         commonjs2: 'react',
