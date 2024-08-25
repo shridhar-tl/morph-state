@@ -1,7 +1,6 @@
-/* eslint-disable @typescript-eslint/ban-types */
 import { unstable_batchedUpdates } from './batchedUpdates';
-import { deepClone, getObjectValue, setObjectValue } from './lib/utils';
-import { ChangeCallback, InterceptorConfig, MutableState, StateProperty } from "./types";
+import { deepClone, getObjectValue, normalizeConfig, setObjectValue } from './lib/utils';
+import { ChangeCallback, ConfigObject, ConfigOption, InterceptorConfig, MutableState, StateProperty, SubscribeCallback } from "./types";
 
 const rootSubscriberKey = '';
 
@@ -9,27 +8,16 @@ type StateWrapper<T> = { current: T };
 
 export function createMutableState<T extends Record<string, any>>(
     initialState?: T,
-    configOrCallback?: ChangeCallback<T, any> | (InterceptorConfig & { changeHandler: ChangeCallback<T, any> })
+    configOrCallback?: ConfigOption<T>
 ): MutableState<T> {
-    let changeHandler!: ChangeCallback<T, any>;
-    let config!: InterceptorConfig;
-
-    if (typeof configOrCallback === "function") {
-        changeHandler = configOrCallback;
-    } else if (configOrCallback && typeof configOrCallback === "object") {
-        const { changeHandler: handler, ...configOptions } = configOrCallback;
-        if (typeof handler === "function") {
-            changeHandler = handler;
-        }
-        config = configOptions;
-    }
+    const { changeHandler, config } = normalizeConfig(configOrCallback);
 
     const __ms__ref = "s7jebsld"; // Need to generate random id
     const constructInitialState = () => initialState ? deepClone(initialState) : {} as T;
     const state: StateWrapper<T> = { current: constructInitialState() };
 
     // Contains reference to all the subscribers based on individual path
-    const pathToCallback: Map<string, Set<Function>> = new Map();
+    const pathToCallback: Map<string, Set<SubscribeCallback>> = new Map();
 
     // Contains list of subscribers to notify based on currently running changes
     const subscribersToNotify = new Set<string>(); // This would be cleared every time after notified
@@ -57,7 +45,7 @@ export function createMutableState<T extends Record<string, any>>(
                 subscribersToNotify.clear(); // Clear the paths list after collating the list
                 finalSubscriberPathsToNotify.add(rootSubscriberKey); // Notify root subscribers if any part of the state changes
 
-                const finalSubscribersToNotify = new Set<Function>();
+                const finalSubscribersToNotify = new Set<SubscribeCallback>();
                 finalSubscriberPathsToNotify.forEach(p => {
                     const callbacks = pathToCallback.get(p);
                     if (callbacks) {
@@ -71,7 +59,7 @@ export function createMutableState<T extends Record<string, any>>(
     };
 
 
-    function subscribe(callback: Function, path?: string) {
+    function subscribe(callback: SubscribeCallback, path?: string) {
         if (!path || typeof path !== 'string') {
             path = rootSubscriberKey;
         }
@@ -80,7 +68,7 @@ export function createMutableState<T extends Record<string, any>>(
             pathToCallback.set(path, new Set());
         }
 
-        const callbacks = pathToCallback.get(path) as Set<Function>;
+        const callbacks = pathToCallback.get(path) as Set<SubscribeCallback>;
         callbacks.add(callback);
 
         return () => callbacks.delete(callback);
@@ -232,7 +220,7 @@ export function createMutableState<T extends Record<string, any>>(
                 $remove: () => setStatePropValue(propPath, (v: any) => buildChangeHandler(v, pathStr)),
                 $eventHandler: (callback?: (value: any) => void) => (event: any) => setStatePropValue(propPath, (v: any) => buildChangeHandler(v, pathStr, callback), event.target.value),
                 $changeHandler: (value: any) => setStatePropValue(propPath, (v: any) => buildChangeHandler(v, pathStr), value),
-                $subscribe: (callback: Function) => subscribe(callback, pathStr)
+                $subscribe: (callback: SubscribeCallback) => subscribe(callback, pathStr)
             };
 
             setHandlersForSpecialObjects(proxyBase);
@@ -248,11 +236,14 @@ export function createMutableState<T extends Record<string, any>>(
 
         return new Proxy({
             ...rootObject,
-            withConfig: (newConfig: InterceptorConfig) => withConfig({ ...config, ...newConfig })
+            withConfig: (newConfig: ConfigObject) => {
+                const { config: modConfig } = normalizeConfig(newConfig);
+                return withConfig({ ...config, ...modConfig })
+            }
         }, getHandlerForProxy()) as MutableState<T>;
     }
 
-    return withConfig(config ?? {});
+    return withConfig(config);
 }
 
 

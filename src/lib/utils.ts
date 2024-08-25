@@ -1,4 +1,4 @@
-import { ChangeCallback, InterceptorConfig } from "../types";
+import { ChangeCallback, ConfigObject, ConfigOption, InterceptorConfig } from "../types";
 
 export function deepClone<T>(value: T): T {
     const references = new WeakMap<any, any>();
@@ -77,39 +77,6 @@ export function deepClone<T>(value: T): T {
     return _deepClone(value);
 }
 
-export function withChangeHandler(state: any): (e: any) => void {
-    return state.$changeHandler;
-}
-
-export function withEventHandler<T, N>(state: any, filter?: ChangeCallback<T, N>): (e: any) => void {
-    return state.$eventHandler(filter);
-}
-
-export function valueOf(state: any): any {
-    return state?.__ms_prx ? state.$value : state;
-}
-
-export function isUndefined(state: any): boolean {
-    return valueOf(state) === undefined;
-}
-
-export function isNull(state: any): boolean {
-    return valueOf(state) === null;
-}
-
-export function isNullOrUndefined(state: any): boolean {
-    const value = valueOf(state);
-    return value === undefined || value === null;
-}
-
-export function isTruthy(state: any): boolean {
-    return Boolean(valueOf(state));
-}
-
-export function withConfig(store: any, config: InterceptorConfig) {
-    return store?.withConfig?.(config);
-}
-
 export function setObjectValue(obj: any, path: string[], value?: any): any {
     const currentValue = getObjectValue(obj, path);
 
@@ -171,4 +138,31 @@ export function getObjectValue(obj: any, path: string[]): any {
     }
 
     return current;
+}
+
+
+export function normalizeConfig<T>(configOrCallback?: ConfigOption<T> | ConfigObject) {
+    let changeHandler!: ChangeCallback<T, any>;
+    let config: InterceptorConfig = {};
+
+    if (typeof configOrCallback === "function") {
+        changeHandler = configOrCallback;
+    } else if (configOrCallback && typeof configOrCallback === "object") {
+        const { onChange: handler, ...configOptions } = configOrCallback as any;
+        if (typeof handler === "function") {
+            changeHandler = handler;
+        }
+        config = configOptions;
+    } else if (typeof configOrCallback === "boolean") {
+        config = {
+            interceptArrays: configOrCallback,
+            interceptNull: configOrCallback,
+            interceptObjects: configOrCallback,
+            interceptSpecialObjects: configOrCallback,
+            interceptUndefined: configOrCallback,
+            interceptValues: configOrCallback,
+        };
+    }
+
+    return { changeHandler, config };
 }

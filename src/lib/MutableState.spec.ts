@@ -1,6 +1,6 @@
 import { createMutableState } from '../MutableState';
 import { until } from './test-utils';
-import { valueOf, withConfig } from './utils';
+import { valueOf, withConfig } from './helpers';
 
 const defaultNameValue = 'John';
 const defaultAgeValue = 30;
