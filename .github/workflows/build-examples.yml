@@ -8,6 +8,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - run: git config --global user.name 'GitHub Web Deploy CI'
+      - run: git config --global user.email 'shridhar.tl@gmail.com'
+    
       - name: Checkout
         uses: actions/checkout@v2
 
