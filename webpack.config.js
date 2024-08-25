@@ -72,7 +72,7 @@ module.exports = (env, argv) => {
       isProduction && isExampleMode && new CopyWebpackPlugin({ patterns: [{ from: 'README.md', to: './' }] }),
       (!isProduction || isExampleMode) && new HtmlWebpackPlugin({
         template: './src/demo/index.html',
-        filename: isProduction ? 'example.html' : 'index.html',
+        filename: isProduction ? 'examples/index.html' : 'index.html',
         chunks: isProduction ? undefined : ['demo']
       }),
       isProduction && !isExampleMode && new PackageJsonTransformerPlugin(),

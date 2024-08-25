@@ -27,7 +27,7 @@
 8. [More Usage Examples](#more-usage-examples)
 9. [Contributing](#contributing)
 10. [Conclusion](#conclusion)
-11. [View Examples](./example.html)
+11. [View Examples](./examples)
 
 ## Introduction
 
