@@ -1,3 +1,4 @@
+const fs = require('fs');
 const path = require('path');
 const { CleanWebpackPlugin } = require('clean-webpack-plugin');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
@@ -5,10 +6,11 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 
 module.exports = (env, argv) => {
   const isProduction = argv.mode === 'production';
+  const isExampleMode = !!env.exampleMode;
 
   return {
     mode: isProduction ? 'production' : 'development',
-    entry: isProduction ? './src/index.ts' : {
+    entry: isProduction ? (isExampleMode ? './src/demo/index.tsx' : './src/index.ts') : {
       demo: './src/demo/index.tsx',
       lib: './src/index.ts'
     },
@@ -61,17 +63,19 @@ module.exports = (env, argv) => {
     } : undefined,
     plugins: [
       new CleanWebpackPlugin(),
-      new CopyWebpackPlugin({
+      isProduction && !isExampleMode && new CopyWebpackPlugin({
         patterns: [
           { from: 'README.md', to: './' },
           { from: 'LICENSE', to: './' }
         ]
       }),
-      !isProduction && new HtmlWebpackPlugin({
+      isProduction && isExampleMode && new CopyWebpackPlugin({ patterns: [{ from: 'README.md', to: './' }] }),
+      (!isProduction || isExampleMode) && new HtmlWebpackPlugin({
         template: './src/demo/index.html',
-        filename: 'index.html',
-        chunks: ['demo']
-      })
+        filename: isProduction ? 'example.html' : 'index.html',
+        chunks: isProduction ? undefined : ['demo']
+      }),
+      isProduction && !isExampleMode && new PackageJsonTransformerPlugin(),
     ],
     devServer: !isProduction ? {
       static: {
@@ -83,3 +87,29 @@ module.exports = (env, argv) => {
     } : undefined,
   };
 };
+
+
+class PackageJsonTransformerPlugin {
+  apply(compiler) {
+    compiler.hooks.emit.tapAsync('PackageJsonTransformerPlugin', (compilation, callback) => {
+      const packageJsonPath = path.resolve(__dirname, 'package.json');
+      const distPackageJsonPath = path.resolve(compiler.options.output.path, 'package.json');
+
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+
+      // Remove devDependencies and scripts
+      delete packageJson.devDependencies;
+      delete packageJson.scripts;
+
+      // Modify main and types
+      packageJson.main = 'index.js';
+      packageJson.types = 'index.d.ts';
+
+      // Write the modified package.json to the output directory
+      fs.writeFileSync(distPackageJsonPath, JSON.stringify(packageJson, null, 2), 'utf-8');
+
+      console.log('Transformed and copied package.json to dist folder.');
+      callback();
+    });
+  }
+}
