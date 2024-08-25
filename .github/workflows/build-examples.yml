@@ -10,10 +10,11 @@ jobs:
     steps:
       - run: git config --global user.name 'GitHub Web Deploy CI'
       - run: git config --global user.email 'shridhar.tl@gmail.com'
-      - run: git remote set-url origin https://shridhar-tl:${{ secrets.COMMIT_KEY }}@github.com/${{ github.repository }}
     
       - name: Checkout
         uses: actions/checkout@v2
+        
+      - run: git remote set-url origin https://shridhar-tl:${{ secrets.COMMIT_KEY }}@github.com/${{ github.repository }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v2
