@@ -232,9 +232,11 @@ const callback = (value, { field, update, cancel }) => {
     console.log(`State change at ${field} to ${value}`);
 };
 
+const config = { interceptUndefined: true, interceptNull: true, interceptValues: true };
+
 function App() {
     return (
-        <MorphStateProvider initialState={initialState} config={{ interceptUndefined: true, interceptNull: true, interceptValues: true }} onChange={callback}>
+        <MorphStateProvider initialState={initialState} config={config} onChange={callback}>
             <RootComponent />
         </MorphStateProvider>
     );
@@ -254,7 +256,7 @@ function RootComponent() {
 
 function ChildComponent() {
     // Though `interceptValues` is set to true at provider level, as it is set to `false` at hook, age property would be a raw numeric value instead of ruturning a proxy.
-    // You need not to use helper methods for such use case.
+    // You need not use helper methods for such use case.
     const age = useMorphState(state => state.age, { interceptValues: false });
     return (
         <div>
